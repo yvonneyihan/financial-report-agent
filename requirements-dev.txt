@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Generates tests/fixtures/acme_annual_report_fy2024.pdf
+reportlab

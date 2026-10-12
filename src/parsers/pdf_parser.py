@@ -2,9 +2,13 @@
 
 from pathlib import Path
 
+import re
+
 import pdfplumber
 import pandas as pd
 from pdfplumber.page import Page
+
+from .models import ParsedDocument, ParsedPage, ParsedTable
 
 
 class PDFReadError(IOError):
@@ -55,6 +59,39 @@ def parse_pdf(path: Path) -> dict:
     return {"text": text, "tables": tables}
 
 
+def parse_pdf_pages(path: Path) -> ParsedDocument:
+    """Parse a PDF page by page, preserving page numbers.
+
+    Unlike :func:`parse_pdf` (which joins all pages), this keeps per-page text
+    and tables so downstream retrieval can cite page numbers.  Text belonging
+    to a detected table is excluded from ``ParsedPage.text`` to avoid
+    duplicating table content.
+
+    Note: pdfplumber's default table detection relies on ruling lines, so
+    borderless tables (common in SEC filings) remain in ``text``.  Callers
+    that care about table structure must handle that case.
+
+    Raises:
+        FileNotFoundError: if ``path`` does not exist.
+        ValueError: if ``path`` is not a ``.pdf`` file.
+        PDFReadError: if pdfplumber cannot open or read the file.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"PDF not found: {path}")
+    if path.suffix.lower() != ".pdf":
+        raise ValueError(f"Expected a .pdf file, got: {path.suffix}")
+
+    pages: list[ParsedPage] = []
+    try:
+        with pdfplumber.open(path) as pdf:
+            for index, page in enumerate(pdf.pages, start=1):
+                pages.append(_parse_page(page, index))
+    except Exception as exc:
+        raise PDFReadError(f"Could not read {path}: {exc}") from exc
+
+    return ParsedDocument(page_count=len(pages), pages=pages)
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -102,3 +139,30 @@ def _stitch_tables(per_page: list[list[pd.DataFrame]]) -> list[pd.DataFrame]:
             stitched.append(df)
 
     return stitched
+
+
+def _parse_page(page: Page, page_number: int) -> ParsedPage:
+    """Split one page into non-table text and detected tables."""
+    found = page.find_tables()
+    tables: list[ParsedTable] = []
+    text_page = page
+    for table in found:
+        rows = _clean_rows(table.extract())
+        if len(rows) >= 2:
+            tables.append(ParsedTable(page_number=page_number, rows=rows))
+        # Remove the table region from the prose text even if the table was
+        # too small to keep, so its cells do not leak into `text`.
+        text_page = text_page.outside_bbox(table.bbox)
+
+    text = text_page.extract_text() or ""
+    return ParsedPage(page_number=page_number, text=text.strip(), tables=tables)
+
+
+def _clean_rows(raw: list[list[str | None]]) -> list[list[str]]:
+    """Normalise cell text (None → "", collapse whitespace) and drop empty rows."""
+    rows: list[list[str]] = []
+    for row in raw or []:
+        cells = [re.sub(r"\s+", " ", c).strip() if c is not None else "" for c in row]
+        if any(cells):
+            rows.append(cells)
+    return rows
