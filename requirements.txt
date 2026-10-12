@@ -1,0 +1,28 @@
+# AI / LLM
+anthropic
+
+# Document parsing
+pdfplumber
+beautifulsoup4
+requests
+
+# Data modeling & validation
+pydantic
+
+# Data analysis & Excel
+pandas
+openpyxl
+
+# API server
+fastapi
+uvicorn
+
+# Database
+sqlalchemy
+psycopg2-binary
+
+# Testing
+pytest
+
+# Environment
+python-dotenv
