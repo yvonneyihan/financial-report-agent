@@ -16,6 +16,7 @@ openpyxl
 # API server
 fastapi
 uvicorn
+python-multipart  # required by FastAPI for UploadFile / multipart forms
 
 # Database
 sqlalchemy
