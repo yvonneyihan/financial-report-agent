@@ -39,3 +39,9 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Node / TypeScript (server/)
+node_modules/
+server/dist/
+server/data/
+*.tsbuildinfo
