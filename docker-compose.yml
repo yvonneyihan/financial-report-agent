@@ -1,0 +1,61 @@
+# Local development / demo stack. See README.md for setup and server/.env.example
+# and .env.example for the variables each service needs.
+#
+# `db` and `finance-core` are NOT published to the host — `server` is the only
+# public entry point (IMPLEMENTATION_PLAN.md §2). Uncomment their `ports:` only
+# for local debugging.
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: financial_agent
+    volumes:
+      - fra_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # ports: ["5432:5432"]  # uncomment to reach Postgres from the host
+
+  finance-core:
+    build:
+      context: .
+      dockerfile: Dockerfile.finance-core
+    environment:
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN in .env}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    # ports: ["8001:8001"]  # uncomment for local debugging only
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+      finance-core:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/financial_agent
+      AUTO_MIGRATE: "true"
+      PYTHON_SERVICE_URL: http://finance-core:8001
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set INTERNAL_API_TOKEN in .env}
+      API_KEYS: ${API_KEYS:?set API_KEYS in .env, e.g. dev-key-1:demo-owner}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-1536}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-anthropic}
+      LLM_MODEL: ${LLM_MODEL:-claude-opus-4-6}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "3000:3000"
+    volumes:
+      - fra_uploads:/app/data/uploads
+
+volumes:
+  fra_db_data:
+  fra_uploads:

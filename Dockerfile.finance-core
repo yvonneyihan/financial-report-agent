@@ -1,0 +1,18 @@
+# finance-core — internal-only Python service (src/internal_api.py).
+# Not exposed to the host in docker-compose.yml; reached only by the `server`
+# container over the compose network. See IMPLEMENTATION_PLAN.md §2.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src ./src
+
+EXPOSE 8001
+CMD ["uvicorn", "src.internal_api:app", "--host", "0.0.0.0", "--port", "8001"]
